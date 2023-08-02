@@ -80,6 +80,10 @@ class SourceGoogleAds(AbstractSource):
 
     @staticmethod
     def get_incremental_stream_config(google_api: GoogleAds, config: Mapping[str, Any], customers: List[Customer]):
+        start_date = config.get("start_date")
+        if not start_date:
+            start_date = today().subtract(years=2).to_date_string()
+
         end_date = config.get("end_date")
         if end_date:
             end_date = min(today(), parse(end_date)).to_date_string()
@@ -87,7 +91,7 @@ class SourceGoogleAds(AbstractSource):
             api=google_api,
             customers=customers,
             conversion_window_days=config["conversion_window_days"],
-            start_date=config["start_date"],
+            start_date=start_date,
             end_date=end_date,
         )
         return incremental_stream_config
