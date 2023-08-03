@@ -41,7 +41,6 @@ import io.airbyte.integrations.debezium.AirbyteDebeziumHandler;
 import io.airbyte.integrations.debezium.internals.FirstRecordWaitTimeUtil;
 import io.airbyte.integrations.debezium.internals.mysql.MySqlCdcPosition;
 import io.airbyte.integrations.debezium.internals.mysql.MySqlCdcTargetPosition;
-import io.airbyte.integrations.debezium.internals.mysql.MySqlDebeziumStateUtil;
 import io.airbyte.integrations.source.jdbc.AbstractJdbcSource;
 import io.airbyte.integrations.source.jdbc.JdbcDataSourceUtils;
 import io.airbyte.integrations.source.jdbc.JdbcSSLConnectionUtils;
@@ -107,7 +106,7 @@ public class MySqlSource extends AbstractJdbcSource<MysqlType> implements Source
   public static final String DRIVER_CLASS = DatabaseDriver.MYSQL.getDriverClassName();
   public static final String CDC_LOG_FILE = "_ab_cdc_log_file";
   public static final String CDC_LOG_POS = "_ab_cdc_log_pos";
-  public static final String CDC_DEFAULT_CURSOR = "_ab_cdc_default_cursor";
+  public static final String CDC_DEFAULT_CURSOR = "_ab_cdc_cursor";
   public static final List<String> SSL_PARAMETERS = List.of(
       "useSSL=true",
       "requireSSL=true");
@@ -145,8 +144,7 @@ public class MySqlSource extends AbstractJdbcSource<MysqlType> implements Source
 
   /*
    * To prepare for Destination v2, cdc streams must have a default cursor field
-   * Cursor format is [emitted_at]_[_ab_cdc_log_file]_[_ab_cdc_log_pos].
-   * The emitted_at timestamp is used as a proxy for a run id allowing the cursor to be sortable
+   * Cursor format: the airbyte [emittedAt(converted to nano seconds)] + [sync wide record counter]
    */
   private static AirbyteStream setDefaultCursorFieldForCdc(final AirbyteStream stream) {
     stream.setDefaultCursorField(ImmutableList.of(CDC_DEFAULT_CURSOR));
@@ -164,7 +162,7 @@ public class MySqlSource extends AbstractJdbcSource<MysqlType> implements Source
     properties.set(CDC_LOG_POS, numberType);
     properties.set(CDC_UPDATED_AT, stringType);
     properties.set(CDC_DELETED_AT, stringType);
-    properties.set(CDC_DEFAULT_CURSOR, stringType);
+    properties.set(CDC_DEFAULT_CURSOR, numberType);
 
     return stream;
   }
