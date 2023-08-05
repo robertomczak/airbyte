@@ -5,6 +5,7 @@
 
 import json
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import cached_property, lru_cache
 from traceback import format_exc
@@ -325,6 +326,7 @@ class IncrementalFileStream(FileStream, ABC):
         If there is no state, defaults to 1970-01-01 in order to pick up all files present.
         The datetime object is localized to UTC to match the timezone of the last_modified attribute of objects in S3.
         """
+        stream_state = self._get_converted_stream_state(stream_state)
         if stream_state is not None and self.cursor_field in stream_state.keys():
             try:
                 state_datetime = datetime.strptime(stream_state[self.cursor_field], self.datetime_format_string)
@@ -437,3 +439,86 @@ class IncrementalFileStream(FileStream, ABC):
             else:
                 # in case we have no files
                 yield None
+
+    def _is_v4_state_format(self, stream_state: Optional[dict]) -> bool:
+        """
+        Returns True if the stream_state is in the v4 format, otherwise False.
+
+        The stream_state is in the v4 format if the history dictionary is a map
+        of str to str (instead of str to list) and the cursor value is in the
+        format `%Y-%m-%dT%H:%M:%S.%fZ`
+        """
+        if not stream_state:
+            return False
+        if history := stream_state.get("history"):
+            item = list(history.items())[0]
+            if isinstance(item[-1], str):
+                return True
+            else:
+                return False
+        if cursor := stream_state.get(self.cursor_field):
+            try:
+                datetime.strptime(cursor, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                return False
+            else:
+                return True
+        return False
+
+    def _get_converted_stream_state(self, stream_state: Optional[dict]) -> dict:
+        """
+        Transform the history from the new format to the old.
+
+        This will only be used in the event that we roll back from v4.
+
+        e.g.
+        {
+            "stream_name": {
+                "history": {
+                    "simple_test.csv": "2022-05-26T17:49:11.000000Z",
+                    "simple_test_2.csv": "2022-05-27T01:01:01.000000Z",
+                    "redshift_result.csv": "2022-05-27T04:22:20.000000Z",
+                    ...
+                },
+                "_ab_source_file_last_modified": "2022-05-27T04:22:20.000000Z_redshift_result.csv"
+            }
+        }
+        =>
+        {
+            "stream_name": {
+                "history": {
+                    "2022-05-26": ["simple_test.csv.csv"],
+                    "2022-05-27": ["simple_test_2.csv", "redshift_result.csv"],
+                    ...
+                }
+            },
+            "_ab_source_file_last_modified": "2022-05-26T09:55:16Z"
+        }
+        """
+        if not self._is_v4_state_format(stream_state):
+            return stream_state
+
+        converted_history = defaultdict(list)
+
+        for filename, timestamp in stream_state.get("history", {}).items():
+            date_str = self._get_ts_from_millis_ts(timestamp, "%Y-%m-%d")
+            converted_history[date_str].append(filename)
+
+        converted_state = {}
+        if self.cursor_field in stream_state:
+            timestamp_millis = stream_state[self.cursor_field].split("_")[0]
+            converted_state[self.cursor_field] = self._get_ts_from_millis_ts(timestamp_millis, "%Y-%m-%dT%H:%M:%SZ")
+        if "history" in stream_state:
+            converted_state["history"] = converted_history
+
+        return converted_state
+
+    def _get_ts_from_millis_ts(self, timestamp: Optional[str], output_format) -> str:
+        if not timestamp:
+            return timestamp
+        try:
+            timestamp_millis = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            self.logger.warning(f"Unable to parse {timestamp} as v4 timestamp.")
+            return timestamp
+        return timestamp_millis.strftime(output_format)
