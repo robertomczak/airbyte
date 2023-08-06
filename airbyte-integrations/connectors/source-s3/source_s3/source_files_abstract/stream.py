@@ -418,7 +418,6 @@ class IncrementalFileStream(FileStream, ABC):
             yield from super().stream_slices(sync_mode=sync_mode, cursor_field=cursor_field, stream_state=stream_state)
 
         else:
-
             # logic here is to bundle all files with exact same last modified timestamp together in each slice
             prev_file_last_mod: datetime = None  # init variable to hold previous iterations last modified
             grouped_files_by_time: List[Dict[str, Any]] = []

@@ -2,9 +2,9 @@
 # Copyright (c) 2023 Airbyte, Inc., all rights reserved.
 #
 
-import pytest
-from typing import MutableMapping, Any
+from typing import Any, MutableMapping
 
+import pytest
 from source_s3.v4.cursor import Cursor
 
 

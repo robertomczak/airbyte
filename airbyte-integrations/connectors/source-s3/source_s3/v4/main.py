@@ -26,10 +26,10 @@ def get_source(args: List[str]):
                     type=TraceType.ERROR,
                     emitted_at=int(datetime.now().timestamp() * 1000),
                     error=AirbyteErrorTraceMessage(
-                        message=f"Error starting the sync. This could be due to an invalid configuration or catalog. Please contact Support for assistance.",
+                        message="Error starting the sync. This could be due to an invalid configuration or catalog. Please contact Support for assistance.",
                         stack_trace=traceback.format_exc(),
                     ),
-                )
+                ),
             ).json()
         )
         return None
