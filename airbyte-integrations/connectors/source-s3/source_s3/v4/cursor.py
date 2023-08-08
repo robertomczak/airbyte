@@ -11,17 +11,18 @@ from airbyte_cdk.sources.file_based.types import StreamState
 
 class Cursor(DefaultFileBasedCursor):
     DATE_FORMAT = "%Y-%m-%d"
+    CURSOR_FIELD = "_ab_source_file_last_modified"
 
     def set_initial_state(self, value: StreamState) -> None:
-        if self._is_legacy_history(value):
-            value = self._convert_legacy_history(value)
+        if self._is_legacy_state(value):
+            value = self._convert_legacy_state(value)
         super().set_initial_state(value)
 
     @staticmethod
-    def _is_legacy_history(value: StreamState) -> bool:
+    def _is_legacy_state(value: StreamState) -> bool:
         if not value:
             return False
-        item = list(value.keys())[0]
+        item = list(value.get("history", {}).keys())[0]
         try:
             datetime.strptime(item, Cursor.DATE_FORMAT)
         except ValueError:
@@ -29,7 +30,7 @@ class Cursor(DefaultFileBasedCursor):
         return True
 
     @staticmethod
-    def _convert_legacy_history(legacy_history: MutableMapping[str, str]) -> MutableMapping[str, str]:
+    def _convert_legacy_state(legacy_state: StreamState) -> MutableMapping[str, str]:
         """
         Transform the history from the old state message format to the new.
 
@@ -47,16 +48,21 @@ class Cursor(DefaultFileBasedCursor):
             ...
         }
         """
-        history = {}
+        converted_history = {}
 
-        for date_str, filenames in legacy_history.items():
+        for date_str, filenames in legacy_state.get("history", {}).items():
             date_obj = datetime.strptime(date_str, Cursor.DATE_FORMAT)
 
             for filename in filenames:
-                if filename in history:
-                    if date_obj > datetime.strptime(history[filename], "%Y-%m-%dT%H:%M:%S.%fZ"):
-                        history[filename] = date_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                if filename in converted_history:
+                    if date_obj > datetime.strptime(converted_history[filename], "%Y-%m-%dT%H:%M:%S.%fZ"):
+                        converted_history[filename] = date_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                 else:
-                    history[filename] = date_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    converted_history[filename] = date_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-        return history
+        if converted_history:
+            filename, timestamp = max(converted_history.items(), key=lambda x: (x[1], x[0]))
+            cursor = f"{timestamp}_{filename}"
+        else:
+            cursor = None
+        return {"history": converted_history, "_ab_source_file_last_modified": cursor}

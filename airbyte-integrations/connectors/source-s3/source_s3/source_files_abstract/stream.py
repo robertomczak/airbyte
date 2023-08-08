@@ -500,8 +500,8 @@ class IncrementalFileStream(FileStream, ABC):
         converted_history = defaultdict(list)
 
         for filename, timestamp in stream_state.get("history", {}).items():
-            date_str = self._get_ts_from_millis_ts(timestamp, "%Y-%m-%d")
-            converted_history[date_str].append(filename)
+            if date_str := self._get_ts_from_millis_ts(timestamp, "%Y-%m-%d"):
+                converted_history[date_str].append(filename)
 
         converted_state = {}
         if self.cursor_field in stream_state:
@@ -512,7 +512,7 @@ class IncrementalFileStream(FileStream, ABC):
 
         return converted_state
 
-    def _get_ts_from_millis_ts(self, timestamp: Optional[str], output_format) -> str:
+    def _get_ts_from_millis_ts(self, timestamp: Optional[str], output_format: str) -> Optional[str]:
         if not timestamp:
             return timestamp
         try:
